@@ -16,10 +16,12 @@
 
 import * as React from 'react';
 import AbstractWidget from './index';
+import { withInfo } from '@storybook/addon-info';
 
 export default {
   title: 'Widgets/CodeEditors',
   component: AbstractWidget,
+  decorators: [withInfo],
 };
 
 export const javascriptEditor = () => <AbstractWidget type="javascript-editor" />;
