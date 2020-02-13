@@ -93,6 +93,7 @@ interface ITableProps extends WithStyles<typeof styles> {
   fields?: IField[];
   type?: string;
   isActive?: boolean;
+  fieldCount?: number;
 }
 
 function renderGridHeader(fields: IField[], isTarget: boolean, classes) {
@@ -130,18 +131,24 @@ function renderGridBody(fields: IField[], tableName: string, activeFields = new 
   );
 }
 
-function FllTable({ tableId, fields, type, isActive, classes }: ITableProps) {
+function FllTable({ tableId, fields, type, isActive, fieldCount, classes }: ITableProps) {
   const GRID_HEADERS = [{ property: 'name', label: tableId }];
   const { target, activeCauseSets, activeImpactSets } = useContext<IContextState>(FllContext);
   const isTarget = type === 'target';
+  let hasMoreFields = false;
+
+  // check for unrelated cause and impact fields
+  if (type !== 'target' && fields) {
+    hasMoreFields = fieldCount > fields.length;
+  }
 
   // get fields that are a direct cause or impact to selected field
   let activeFields = [];
   if (isActive && !isTarget) {
-    if (type === 'cause') {
-      activeFields = activeCauseSets[tableId];
-    } else {
-      activeFields = activeImpactSets[tableId];
+    if (type === 'cause' && Object.keys(activeCauseSets).length > 0) {
+      activeFields = activeCauseSets[tableId].fields;
+    } else if (type === 'impact' && Object.keys(activeImpactSets).length > 0) {
+      activeFields = activeImpactSets[tableId].fields;
     }
   }
 
