@@ -19,6 +19,13 @@ import withStyles, { WithStyles } from '@material-ui/core/styles/withStyles';
 import Heading, { IHeadingProps } from 'components/Heading';
 import ThemeWrapper from 'components/ThemeWrapper';
 
+export const h2Styles = (theme) => ({
+  fontSize: '1.4rem !important',
+  fontWeight: 'bold' as 'bold',
+  borderBottom: `1px solid ${theme.palette.grey['300']}`,
+  paddingBottom: 4,
+});
+
 const styles = (theme) => {
   /**
    * We set the font sizes here for two reasons,
@@ -36,12 +43,7 @@ const styles = (theme) => {
       fontSize: '1.5rem !important',
       fontWeight: 'bold' as 'bold',
     },
-    h2Styles: {
-      fontSize: '1.4rem !important',
-      fontWeight: 'bold' as 'bold',
-      borderBottom: `1px solid ${theme.palette.grey['300']}`,
-      paddingBottom: 4,
-    },
+    h2Styles: h2Styles(theme),
     h3Styles: {
       fontSize: '1.3rem !important',
       fontWeight: 600,
