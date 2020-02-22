@@ -30,7 +30,7 @@ export default function FileDnD({ file, onDropHandler, error, uploadLabel, click
 
   return (
     <div
-      {...getRootProps()}
+      {...getRootProps({ 'data-cy': 'file-drop-zone' })}
       className={classnames('file-drop-container', {
         'file-drag-container': isDragActive,
       })}
