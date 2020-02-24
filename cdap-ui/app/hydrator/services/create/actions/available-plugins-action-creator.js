@@ -77,6 +77,13 @@ class PipelineAvailablePluginsActions {
       });
   }
 
+  fetchPluginsForIngestion(extensionsParams) {
+    let deferred = this.$q.defer();
+
+    this.fetchPlugins(extensionsParams, deferred);
+
+    return deferred.promise;
+  }
   fetchPluginsForDetails(namespace, stages) {
     let availablePluginsMap = {};
     let pluginsList = [];
