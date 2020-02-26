@@ -41,8 +41,6 @@ import io.cdap.cdap.common.app.RunIds;
 import io.cdap.cdap.common.conf.Constants;
 import io.cdap.cdap.data2.dataset2.DatasetFramework;
 import io.cdap.cdap.gateway.handlers.util.AbstractAppFabricHttpHandler;
-import io.cdap.cdap.internal.app.runtime.schedule.SchedulerException;
-import io.cdap.cdap.internal.app.runtime.schedule.TimeSchedulerService;
 import io.cdap.cdap.internal.app.runtime.schedule.constraint.ConstraintCodec;
 import io.cdap.cdap.internal.app.runtime.schedule.trigger.SatisfiableTrigger;
 import io.cdap.cdap.internal.app.runtime.schedule.trigger.TriggerCodec;
@@ -50,7 +48,6 @@ import io.cdap.cdap.internal.dataset.DatasetCreationSpec;
 import io.cdap.cdap.internal.schedule.constraint.Constraint;
 import io.cdap.cdap.proto.DatasetSpecificationSummary;
 import io.cdap.cdap.proto.ProgramType;
-import io.cdap.cdap.proto.ScheduledRuntime;
 import io.cdap.cdap.proto.WorkflowNodeStateDetail;
 import io.cdap.cdap.proto.WorkflowTokenDetail;
 import io.cdap.cdap.proto.WorkflowTokenNodeDetail;
@@ -101,15 +98,12 @@ public class WorkflowHttpHandler extends AbstractAppFabricHttpHandler {
     .create();
 
   private final DatasetFramework datasetFramework;
-  private final TimeSchedulerService timeScheduler;
   private final Store store;
   private final ProgramRuntimeService runtimeService;
 
   @Inject
-  WorkflowHttpHandler(Store store, ProgramRuntimeService runtimeService,
-                      TimeSchedulerService timeScheduler, DatasetFramework datasetFramework) {
+  WorkflowHttpHandler(Store store, ProgramRuntimeService runtimeService, DatasetFramework datasetFramework) {
     this.datasetFramework = datasetFramework;
-    this.timeScheduler = timeScheduler;
     this.store = store;
     this.runtimeService = runtimeService;
   }
@@ -153,51 +147,6 @@ public class WorkflowHttpHandler extends AbstractAppFabricHttpHandler {
       throw new NotFoundException(id.run(runId));
     }
     return runtimeInfo.getController();
-  }
-
-  /**
-   * Returns the previous runtime when the scheduled program ran.
-   */
-  @GET
-  @Path("/apps/{app-id}/workflows/{workflow-id}/previousruntime")
-  public void getPreviousScheduledRunTime(HttpRequest request, HttpResponder responder,
-                                  @PathParam("namespace-id") String namespaceId,
-                                  @PathParam("app-id") String appId,
-                                  @PathParam("workflow-id") String workflowId)
-    throws SchedulerException, NotFoundException {
-    getScheduledRuntime(responder, namespaceId, appId, workflowId, true);
-  }
-
-  /**
-   * Returns next scheduled runtime of a workflow.
-   */
-  @GET
-  @Path("/apps/{app-id}/workflows/{workflow-id}/nextruntime")
-  public void getNextScheduledRunTime(HttpRequest request, HttpResponder responder,
-                                  @PathParam("namespace-id") String namespaceId,
-                                  @PathParam("app-id") String appId,
-                                  @PathParam("workflow-id") String workflowId)
-    throws SchedulerException, NotFoundException {
-    getScheduledRuntime(responder, namespaceId, appId, workflowId, false);
-  }
-
-  private void getScheduledRuntime(HttpResponder responder, String namespaceId, String appName, String workflowName,
-                                   boolean previousRuntimeRequested) throws SchedulerException, NotFoundException {
-    try {
-      ApplicationId appId = new ApplicationId(namespaceId, appName);
-      WorkflowId workflowId = new WorkflowId(appId, workflowName);
-      Store.ensureProgramExists(workflowId, store.getApplication(appId));
-
-      List<ScheduledRuntime> runtimes;
-      if (previousRuntimeRequested) {
-        runtimes = timeScheduler.previousScheduledRuntime(workflowId);
-      } else {
-        runtimes = timeScheduler.nextScheduledRuntime(workflowId);
-      }
-      responder.sendJson(HttpResponseStatus.OK, GSON.toJson(runtimes));
-    } catch (SecurityException e) {
-      responder.sendStatus(HttpResponseStatus.UNAUTHORIZED);
-    }
   }
 
   @GET

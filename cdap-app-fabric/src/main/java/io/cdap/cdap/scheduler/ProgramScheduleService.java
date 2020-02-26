@@ -28,10 +28,13 @@ import io.cdap.cdap.common.ProfileConflictException;
 import io.cdap.cdap.internal.app.runtime.schedule.ProgramSchedule;
 import io.cdap.cdap.internal.app.runtime.schedule.ProgramScheduleRecord;
 import io.cdap.cdap.internal.app.runtime.schedule.ProgramScheduleStatus;
+import io.cdap.cdap.internal.app.runtime.schedule.SchedulerException;
+import io.cdap.cdap.internal.app.runtime.schedule.TimeSchedulerService;
 import io.cdap.cdap.internal.app.runtime.schedule.store.Schedulers;
 import io.cdap.cdap.internal.schedule.constraint.Constraint;
 import io.cdap.cdap.proto.ProgramType;
 import io.cdap.cdap.proto.ScheduleDetail;
+import io.cdap.cdap.proto.ScheduledRuntime;
 import io.cdap.cdap.proto.id.ApplicationId;
 import io.cdap.cdap.proto.id.NamespaceId;
 import io.cdap.cdap.proto.id.ProgramId;
@@ -59,13 +62,48 @@ public class ProgramScheduleService {
   private final AuthorizationEnforcer authorizationEnforcer;
   private final AuthenticationContext authenticationContext;
   private final Scheduler scheduler;
+  private final TimeSchedulerService timeSchedulerService;
 
   @Inject
   ProgramScheduleService(AuthorizationEnforcer authorizationEnforcer,
-                         AuthenticationContext authenticationContext, Scheduler scheduler) {
+                         AuthenticationContext authenticationContext, Scheduler scheduler,
+                         TimeSchedulerService timeSchedulerService) {
     this.authorizationEnforcer = authorizationEnforcer;
     this.authenticationContext = authenticationContext;
     this.scheduler = scheduler;
+    this.timeSchedulerService = timeSchedulerService;
+  }
+
+  /**
+   * Get the previous run time for the program. A program may contain one or more schedules
+   * the method returns the previous runtimes for all the schedules. This method only takes
+   + into account schedules based on time. For schedules based on data, an empty list will
+   + be returned.
+   *
+   * @param progrmaId program to fetch the previous runtime.
+   * @return list of Scheduled runtimes for the program. Empty list if there are no schedules
+   *         or if the program is not found
+   * @throws SchedulerException on unforeseen error.
+   */
+  public List<ScheduledRuntime> getPreviousScheduledRuntimes(ProgramId progrmaId) throws Exception {
+    AuthorizationUtil.ensureAccess(progrmaId, authorizationEnforcer, authenticationContext.getPrincipal());
+    return timeSchedulerService.previousScheduledRuntime(progrmaId);
+  }
+
+  /**
+   * Get the next scheduled run time of the program. A program may contain multiple schedules.
+   * This method returns the next scheduled runtimes for all the schedules. This method only takes
+   + into account schedules based on time. For schedules based on data, an empty list will
+   + be returned.
+   *
+   * @param programId program to fetch the next runtime.
+   * @return list of scheduled runtimes for the program. Empty list if there are no schedules
+   *         or if the program is not found
+   * @throws SchedulerException on unforeseen error.
+   */
+  public List<ScheduledRuntime> getNextScheduledRuntimes(ProgramId programId) throws Exception {
+    AuthorizationUtil.ensureAccess(programId, authorizationEnforcer, authenticationContext.getPrincipal());
+    return timeSchedulerService.nextScheduledRuntime(programId);
   }
 
   /**

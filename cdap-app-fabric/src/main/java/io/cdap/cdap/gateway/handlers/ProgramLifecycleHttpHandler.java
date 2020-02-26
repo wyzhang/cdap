@@ -87,12 +87,14 @@ import io.cdap.cdap.proto.ProtoTrigger;
 import io.cdap.cdap.proto.RunCountResult;
 import io.cdap.cdap.proto.RunRecord;
 import io.cdap.cdap.proto.ScheduleDetail;
+import io.cdap.cdap.proto.ScheduledRuntime;
 import io.cdap.cdap.proto.ServiceInstances;
 import io.cdap.cdap.proto.id.ApplicationId;
 import io.cdap.cdap.proto.id.NamespaceId;
 import io.cdap.cdap.proto.id.ProgramId;
 import io.cdap.cdap.proto.id.ProgramRunId;
 import io.cdap.cdap.proto.id.ScheduleId;
+import io.cdap.cdap.proto.id.WorkflowId;
 import io.cdap.cdap.scheduler.ProgramScheduleService;
 import io.cdap.cdap.security.spi.authorization.UnauthorizedException;
 import io.cdap.http.HttpResponder;
@@ -813,6 +815,50 @@ public class ProgramLifecycleHttpHandler extends AbstractAppFabricHttpHandler {
       .collect(Collectors.toList());
     responder.sendJson(HttpResponseStatus.OK, GSON.toJson(details, Schedulers.SCHEDULE_DETAILS_TYPE));
   }
+
+  /**
+   * Returns the previous runtime when the scheduled program ran.
+   */
+  @GET
+  @Path("/apps/{app-id}/workflows/{workflow-id}/previousruntime")
+  public void getPreviousScheduledRunTime(HttpRequest request, HttpResponder responder,
+                                          @PathParam("namespace-id") String namespaceId,
+                                          @PathParam("app-id") String appId,
+                                          @PathParam("workflow-id") String workflowId) throws Exception {
+    getScheduledRuntime(responder, namespaceId, appId, workflowId, true);
+  }
+
+  /**
+   * Returns next scheduled runtime of a workflow.
+   */
+  @GET
+  @Path("/apps/{app-id}/workflows/{workflow-id}/nextruntime")
+  public void getNextScheduledRunTime(HttpRequest request, HttpResponder responder,
+                                      @PathParam("namespace-id") String namespaceId,
+                                      @PathParam("app-id") String appId,
+                                      @PathParam("workflow-id") String workflowId) throws Exception {
+    getScheduledRuntime(responder, namespaceId, appId, workflowId, false);
+  }
+
+  private void getScheduledRuntime(HttpResponder responder, String namespaceId, String appName, String workflowName,
+                                   boolean previousRuntimeRequested) throws Exception {
+    try {
+      ApplicationId appId = new ApplicationId(namespaceId, appName);
+      WorkflowId workflowId = new WorkflowId(appId, workflowName);
+      Store.ensureProgramExists(workflowId, store.getApplication(appId));
+
+      List<ScheduledRuntime> runtimes;
+      if (previousRuntimeRequested) {
+        runtimes = programScheduleService.getPreviousScheduledRuntimes(workflowId);
+      } else {
+        runtimes = programScheduleService.getNextScheduledRuntimes(workflowId);
+      }
+      responder.sendJson(HttpResponseStatus.OK, GSON.toJson(runtimes));
+    } catch (SecurityException e) {
+      responder.sendStatus(HttpResponseStatus.UNAUTHORIZED);
+    }
+  }
+
 
   @PUT
   @Path("apps/{app-name}/schedules/{schedule-name}")
