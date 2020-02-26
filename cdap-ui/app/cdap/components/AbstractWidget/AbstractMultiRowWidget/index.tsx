@@ -68,7 +68,7 @@ export default class AbstractMultiRowWidget<
     return props.value.split(delimiter);
   };
 
-  private init = (props) => {
+  public init = (props) => {
     const splitValues = this.deconstructValues(props);
 
     if (splitValues.length === 0) {
@@ -151,7 +151,7 @@ export default class AbstractMultiRowWidget<
     this.onChange();
   };
 
-  public constructValues = () => {
+  public constructValues = (): any => {
     const delimiter = objectQuery(this.props, 'widgetProps', 'delimiter') || ',';
 
     const values = this.state.rows

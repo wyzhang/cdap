@@ -41,7 +41,7 @@ export const AbstractRowStyles = (theme): StyleRules => {
 };
 
 export interface IAbstractRowProps<S extends typeof AbstractRowStyles> extends WithStyles<S> {
-  value: string;
+  value: string | any;
   id: string;
   index: number;
   autofocus: boolean;

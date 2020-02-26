@@ -1,5 +1,5 @@
 /*
- * Copyright © 2019 Cask Data, Inc.
+ * Copyright © 2020 Cask Data, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
@@ -16,12 +16,12 @@
 
 import * as React from 'react';
 import Input from '@material-ui/core/Input';
-import withStyles from '@material-ui/core/styles/withStyles';
+import { KeyValueRow } from 'components/AbstractWidget/KeyValueWidget/KeyValueRow';
+import withStyles, { WithStyles } from '@material-ui/core/styles/withStyles';
 import AbstractRow, {
   IAbstractRowProps,
   AbstractRowStyles,
 } from 'components/AbstractWidget/AbstractMultiRowWidget/AbstractRow';
-
 const styles = (theme) => {
   return {
     ...AbstractRowStyles(theme),
@@ -36,41 +36,34 @@ const styles = (theme) => {
   };
 };
 
-interface IKeyValueRowProps extends IAbstractRowProps<typeof styles> {
-  valuePlaceholder?: string;
-  keyPlaceholder?: string;
-  kvDelimiter?: string;
-  isEncoded: boolean;
-}
-
 interface IKeyValueState {
   value: string;
   key: string;
 }
+interface IRuntimeArgsRowProps extends IAbstractRowProps<typeof styles> {
+  valuePlaceholder?: string;
+  keyPlaceholder?: string;
+  isEncoded: boolean;
+  value: {
+    key: string;
+    value: string;
+    notDeletable: boolean;
+  };
+}
 
 type StateKeys = keyof IKeyValueState;
 
-export class KeyValueRow extends AbstractRow<IKeyValueRowProps, IKeyValueState> {
-  public static defaultProps = {
-    keyPlaceholder: 'Key',
-    valuePlaceholder: 'Value',
-    kvDelimiter: ':',
-    isEncoded: false,
-  };
-
+class RuntimeArgsRowView extends AbstractRow<IRuntimeArgsRowProps, IKeyValueState> {
   public state = {
     key: '',
     value: '',
   };
-
   public componentDidMount() {
-    let [key = '', value = ''] = this.props.value.split(this.props.kvDelimiter);
-
+    let { key, value } = this.props.value;
     if (this.props.isEncoded) {
       key = decodeURIComponent(key);
       value = decodeURIComponent(value);
     }
-
     this.setState({
       key,
       value,
@@ -85,14 +78,11 @@ export class KeyValueRow extends AbstractRow<IKeyValueRowProps, IKeyValueState> 
       () => {
         let key = this.state.key;
         let value = this.state.value;
-
         if (this.props.isEncoded) {
           key = encodeURIComponent(key);
           value = encodeURIComponent(value);
         }
-
-        const updatedValue = key.length > 0 ? [key, value].join(this.props.kvDelimiter) : '';
-        this.onChange(updatedValue);
+        this.onChange({ key, value });
       }
     );
   };
@@ -108,9 +98,8 @@ export class KeyValueRow extends AbstractRow<IKeyValueRowProps, IKeyValueState> 
           autoFocus={this.props.autofocus}
           onKeyPress={this.handleKeyPress}
           onKeyDown={this.handleKeyDown}
-          disabled={this.props.disabled}
+          disabled={this.props.disabled || this.props.value.notDeletable}
           inputRef={this.props.forwardedRef}
-          data-cy="key"
         />
 
         <Input
@@ -121,12 +110,10 @@ export class KeyValueRow extends AbstractRow<IKeyValueRowProps, IKeyValueState> 
           onKeyPress={this.handleKeyPress}
           onKeyDown={this.handleKeyDown}
           disabled={this.props.disabled}
-          data-cy="value"
         />
       </div>
     );
   };
 }
-
-const StyledKeyValueRow = withStyles(styles)(KeyValueRow);
-export default StyledKeyValueRow;
+const RuntimeArgsRow = withStyles(styles)(RuntimeArgsRowView);
+export default RuntimeArgsRow;
