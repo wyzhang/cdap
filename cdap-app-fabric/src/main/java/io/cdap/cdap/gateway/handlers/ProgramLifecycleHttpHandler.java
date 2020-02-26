@@ -58,6 +58,7 @@ import io.cdap.cdap.internal.app.ApplicationSpecificationAdapter;
 import io.cdap.cdap.internal.app.runtime.schedule.ProgramSchedule;
 import io.cdap.cdap.internal.app.runtime.schedule.ProgramScheduleRecord;
 import io.cdap.cdap.internal.app.runtime.schedule.ProgramScheduleStatus;
+import io.cdap.cdap.internal.app.runtime.schedule.SchedulerException;
 import io.cdap.cdap.internal.app.runtime.schedule.constraint.ConstraintCodec;
 import io.cdap.cdap.internal.app.runtime.schedule.store.Schedulers;
 import io.cdap.cdap.internal.app.runtime.schedule.trigger.ProgramStatusTrigger;
@@ -70,6 +71,7 @@ import io.cdap.cdap.proto.BatchProgram;
 import io.cdap.cdap.proto.BatchProgramCount;
 import io.cdap.cdap.proto.BatchProgramHistory;
 import io.cdap.cdap.proto.BatchProgramResult;
+import io.cdap.cdap.proto.BatchProgramSchedule;
 import io.cdap.cdap.proto.BatchProgramStart;
 import io.cdap.cdap.proto.BatchProgramStatus;
 import io.cdap.cdap.proto.BatchRunnable;
@@ -761,7 +763,7 @@ public class ProgramLifecycleHttpHandler extends AbstractAppFabricHttpHandler {
 
     ProgramType programType = getProgramType(type);
     if (programType.getSchedulableType() == null) {
-      throw new BadRequestException("Program type " + programType + " cannot be scheduled");
+      throw new BadRequestException("Program type " + programType + " cannot have schedule");
     }
 
     ProgramId programId = new ApplicationId(namespace, application, appVersion).program(programType, program);
@@ -826,7 +828,7 @@ public class ProgramLifecycleHttpHandler extends AbstractAppFabricHttpHandler {
                                           @PathParam("program-type") String type,
                                           @PathParam("program-name") String program) throws Exception {
     ProgramType programType = getProgramType(type);
-    getScheduledRuntime(responder, new NamespaceId(namespaceId).app(appId).program(programType, program), true);
+    handleScheduleRuntTime(responder, new NamespaceId(namespaceId).app(appId).program(programType, program), true);
   }
 
   /**
@@ -840,30 +842,135 @@ public class ProgramLifecycleHttpHandler extends AbstractAppFabricHttpHandler {
                                       @PathParam("program-type") String type,
                                       @PathParam("program-name") String program) throws Exception {
     ProgramType programType = getProgramType(type);
-    getScheduledRuntime(responder, new NamespaceId(namespaceId).app(appId).program(programType, program), false);
+    handleScheduleRuntTime(responder, new NamespaceId(namespaceId).app(appId).program(programType, program), false);
   }
 
-  private void getScheduledRuntime(HttpResponder responder, ProgramId programId,
-                                   boolean previousRuntimeRequested) throws Exception {
-    if (programId.getType().getSchedulableType() == null) {
-      throw new BadRequestException("Program type " + programId.getType() + " cannot be scheduled");
-    }
-
+  private void handleScheduleRuntTime(HttpResponder responder, ProgramId programId,
+                                      boolean previousRuntimeRequested) throws Exception {
     try {
       lifecycleService.ensureProgramExists(programId);
-
-      List<ScheduledRuntime> runtimes;
-      if (previousRuntimeRequested) {
-        runtimes = programScheduleService.getPreviousScheduledRuntimes(programId);
-      } else {
-        runtimes = programScheduleService.getNextScheduledRuntimes(programId);
-      }
-      responder.sendJson(HttpResponseStatus.OK, GSON.toJson(runtimes));
+      responder.sendJson(HttpResponseStatus.OK, GSON.toJson(getScheduledRunTimes(programId, previousRuntimeRequested)));
     } catch (SecurityException e) {
       responder.sendStatus(HttpResponseStatus.UNAUTHORIZED);
     }
   }
 
+  /**
+   * Returns the previous scheduled run time for all programs that are passed into the data.
+   * The data is an array of JSON objects
+   * where each object must contain the following three elements: appId, programType, and programId
+   * (flow name, service name, etc.).
+   * <p>
+   * Example input:
+   * <pre><code>
+   * [{"appId": "App1", "programType": "Workflow", "programId": "WF1"},
+   * {"appId": "App1", "programType": "Workflow", "programId": "WF2"}]
+   * </code></pre>
+   * </p><p>
+   * The response will be an array of JsonObjects each of which will contain the three input parameters
+   * as well as a "schedules" field, which is a list of {@link ScheduledRuntime} object.
+   * </p><p>
+   * If an error occurs in the input (for the example above, App1 does not exist), then all JsonObjects for which the
+   * parameters have a valid status will have the status field but all JsonObjects for which the parameters do not have
+   * a valid status will have an error message and statusCode.
+   */
+  @POST
+  @Path("/previousruntime")
+  public void batchPreviousRunTimes(FullHttpRequest request,
+                                    HttpResponder responder,
+                                    @PathParam("namespace-id") String namespaceId) throws Exception {
+    List<BatchProgram> batchPrograms = validateAndGetBatchInput(request, BATCH_PROGRAMS_TYPE);
+    responder.sendJson(HttpResponseStatus.OK, GSON.toJson(batchRunTimes(namespaceId, batchPrograms, true)));
+  }
+
+  /**
+   * Returns the next scheduled run time for all programs that are passed into the data.
+   * The data is an array of JSON objects
+   * where each object must contain the following three elements: appId, programType, and programId
+   * (flow name, service name, etc.).
+   * <p>
+   * Example input:
+   * <pre><code>
+   * [{"appId": "App1", "programType": "Workflow", "programId": "WF1"},
+   * {"appId": "App1", "programType": "Workflow", "programId": "WF2"}]
+   * </code></pre>
+   * </p><p>
+   * The response will be an array of JsonObjects each of which will contain the three input parameters
+   * as well as a "schedules" field, which is a list of {@link ScheduledRuntime} object.
+   * </p><p>
+   * If an error occurs in the input (for the example above, App1 does not exist), then all JsonObjects for which the
+   * parameters have a valid status will have the status field but all JsonObjects for which the parameters do not have
+   * a valid status will have an error message and statusCode.
+   */
+  @POST
+  @Path("/nextruntime")
+  public void batchNextRunTimes(FullHttpRequest request,
+                                HttpResponder responder,
+                                @PathParam("namespace-id") String namespaceId) throws Exception {
+    List<BatchProgram> batchPrograms = validateAndGetBatchInput(request, BATCH_PROGRAMS_TYPE);
+    responder.sendJson(HttpResponseStatus.OK, GSON.toJson(batchRunTimes(namespaceId, batchPrograms, false)));
+  }
+
+  /**
+   * Fetches scheduled run times for a set of programs.
+   *
+   * @param namespace namespace of the programs
+   * @param programs the list of programs to fetch scheduled run times
+   * @param previous {@code true} to get the previous scheduled times; {@code false} to get the next scheduled times
+   * @return a list of {@link BatchProgramSchedule} containing the result
+   * @throws SchedulerException if failed to fetch schedules
+   */
+  private List<BatchProgramSchedule> batchRunTimes(String namespace, Collection<? extends BatchProgram> programs,
+                                                   boolean previous) throws Exception {
+    List<ProgramId> programIds = programs.stream()
+      .map(p -> new ProgramId(namespace, p.getAppId(), p.getProgramType(), p.getProgramId()))
+      .collect(Collectors.toList());
+
+    Set<ApplicationId> appIds = programIds.stream().map(ProgramId::getParent).collect(Collectors.toSet());
+    Map<ApplicationId, ApplicationSpecification> appSpecs = store.getApplications(appIds);
+
+    List<BatchProgramSchedule> result = new ArrayList<>();
+    for (ProgramId programId : programIds) {
+      ApplicationSpecification spec = appSpecs.get(programId.getParent());
+      if (spec == null) {
+        result.add(new BatchProgramSchedule(programId, HttpResponseStatus.NOT_FOUND.code(),
+                                            new NotFoundException(programId.getParent()).getMessage(), null));
+        continue;
+      }
+      try {
+        Store.ensureProgramExists(programId, spec);
+        result.add(new BatchProgramSchedule(programId, HttpResponseStatus.OK.code(), null,
+                                            getScheduledRunTimes(programId, previous)));
+      } catch (NotFoundException e) {
+        result.add(new BatchProgramSchedule(programId, HttpResponseStatus.NOT_FOUND.code(), e.getMessage(), null));
+      } catch (BadRequestException e) {
+        result.add(new BatchProgramSchedule(programId, HttpResponseStatus.BAD_REQUEST.code(), e.getMessage(), null));
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Returns a list of {@link ScheduledRuntime} for the given program.
+   *
+   * @param programId the program to fetch schedules for
+   * @param previous {@code true} to get the previous scheduled times; {@code false} to get the next scheduled times
+   * @return a list of {@link ScheduledRuntime}
+   * @throws SchedulerException if failed to fetch the schedule
+   */
+  private List<ScheduledRuntime> getScheduledRunTimes(ProgramId programId,
+                                                      boolean previous) throws Exception {
+    if (programId.getType().getSchedulableType() == null) {
+      throw new BadRequestException("Program " + programId + " cannot have schedule");
+    }
+
+    if (previous) {
+      return programScheduleService.getPreviousScheduledRuntimes(programId);
+    } else {
+      return programScheduleService.getNextScheduledRuntimes(programId);
+    }
+  }
 
   @PUT
   @Path("apps/{app-name}/schedules/{schedule-name}")
@@ -1728,7 +1835,6 @@ public class ProgramLifecycleHttpHandler extends AbstractAppFabricHttpHandler {
                                                      ProgramId programId) {
     int requested;
     String programName = programId.getProgram();
-    String runnableId = programName;
     ProgramType programType = programId.getType();
     if (programType == ProgramType.WORKER) {
       if (!spec.getWorkers().containsKey(programName)) {
@@ -1748,7 +1854,7 @@ public class ProgramLifecycleHttpHandler extends AbstractAppFabricHttpHandler {
       return new BatchRunnableInstances(runnable, HttpResponseStatus.BAD_REQUEST.code(),
                                         "Instances not supported for program type + " + programType);
     }
-    int provisioned = getInstanceCount(programId, runnableId);
+    int provisioned = getInstanceCount(programId, programName);
     // use the pretty name of program types to be consistent
     return new BatchRunnableInstances(runnable, HttpResponseStatus.OK.code(), provisioned, requested);
   }
